@@ -1,0 +1,15 @@
+--- #YAML:1.0
+name:                Term-Emit
+version:             0.0.1
+abstract:            Print with indentation, status, and closure
+license:             ~
+author:              
+    - Steve Roscio <roscio@cpan.org>
+generated_by:        ExtUtils::MakeMaker version 6.42
+distribution_type:   module
+requires:     
+    Scope::Upper :                 0.6
+    Test::More:                    0
+meta-spec:
+    url:     http://module-build.sourceforge.net/META-spec-v1.3.html
+    version: 1.3
