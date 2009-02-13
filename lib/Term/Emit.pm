@@ -1,6 +1,6 @@
 # Term::Emit - Print with indentation, status, and closure
 #
-#  $Id: Emit.pm 9 2009-01-26 20:53:00Z steve $
+#  $Id: Emit.pm 21 2009-02-13 17:24:11Z steve $
 
 package Term::Emit;
 use warnings;
@@ -9,9 +9,9 @@ use 5.008;
 
 use Exporter;
 use base qw/Exporter/;
-use Scope::Upper 0.06 qw/reap :words/;
+use Scope::Upper 0.06 qw/:words reap/;
 
-our $VERSION = '0.0.1';
+our $VERSION = '0.0.2';
 our @EXPORT_OK = qw/emit emit_over emit_prog emit_text emit_done emit_none
                     emit_emerg
                     emit_alert
@@ -22,18 +22,10 @@ our @EXPORT_OK = qw/emit emit_over emit_prog emit_text emit_done emit_none
                     emit_info emit_ok
                     emit_debug
                     emit_notry
-                    emit_unk/;
-our %EXPORT_TAGS = (all      => [@EXPORT_OK],
-                    syslog   => [qw(emit emit_text
-                                    emit_emerg
-                                    emit_alert
-                                    emit_crit
-                                    emit_error
-                                    emit_warn
-                                    emit_note
-                                    emit_info
-                                    emit_debug
-                                    )]);
+                    emit_unk
+                    emit_yes
+                    emit_no/;
+our %EXPORT_TAGS = (all      => [@EXPORT_OK]);
 our %SEVLEV = (EMERG => 15,
                ALERT => 13,
                CRIT  => 11, FAIL => 11, FATAL => 11,
@@ -45,6 +37,8 @@ our %SEVLEV = (EMERG => 15,
                NOTRY => 3,
                UNK   => 2,
                OTHER => 1,
+               YES   => 1,
+               NO    => 0,
               );
 our %BASE_OBJECT = ();
 
@@ -314,7 +308,7 @@ sub emit_done {
     return $s unless $s;
 
     # Return with a severity value
-    return $SEVLEV{uc $sev} || $SEVLEV{'OTHER'};
+    return exists($SEVLEV{uc $sev}) ? $SEVLEV{uc $sev} : $SEVLEV{'OTHER'};
 }
 
 #
@@ -425,6 +419,8 @@ sub emit_ok    {emit_done @_,"OK"};     # copacetic
 sub emit_debug {emit_done @_,"DEBUG"};  # syslog: Really boring diagnostic output.
 sub emit_notry {emit_done @_,"NOTRY"};  # Untried
 sub emit_unk   {emit_done @_,"UNK"};    # Unknown
+sub emit_yes   {emit_done @_,"YES"};    # Yes
+sub emit_no    {emit_done @_,"NO"};     # No
 sub emit_none  {emit_done {-silent => 1}, @_, "NONE"};
                                         # *Special* closes level quietly (prints no wrapup severity)
 
@@ -468,19 +464,21 @@ sub _colorize {
     my ($str,$sev) = @_;
     my $zon = q{};
     my $zoff = q{};
-    $zon = chr(27).'[1;31;40m'  if $sev =~ m{EMERG}i; #bold red on black
-    $zon = chr(27).'[1;35m'     if $sev =~ m{ALERT}i; #bold magenta
-    $zon = chr(27).'[1;31m'     if $sev =~ m{CRIT}i;  #bold red
-    $zon = chr(27).'[1;31m'     if $sev =~ m{FAIL}i;  #bold red
-    $zon = chr(27).'[1;31m'     if $sev =~ m{FATAL}i; #bold red
-    $zon = chr(27).'[31m'       if $sev =~ m{ERROR}i; #red
-    $zon = chr(27).'[33m'       if $sev =~ m{WARN}i;  #yellow
-    $zon = chr(27).'[36m'       if $sev =~ m{NOTE}i;  #cyan
-    $zon = chr(27).'[32m'       if $sev =~ m{INFO}i;  #green
-    $zon = chr(27).'[32m'       if $sev =~ m{OK}i;    #green
-    $zon = chr(27).'[37;43m'    if $sev =~ m{DEBUG}i; #grey on yellow
-    $zon = chr(27).'[30;47m'    if $sev =~ m{NOTRY}i; #black on grey
-    $zon = chr(27).'[1;37;47m'  if $sev =~ m{UNK}i;   #bold white on gray
+    $zon = chr(27).'[1;31;40m'  if $sev =~ m{\bEMERG(ENCY)?}i;      #bold red on black
+    $zon = chr(27).'[1;35m'     if $sev =~ m{\bALERT\b}i;           #bold magenta
+    $zon = chr(27).'[1;31m'     if $sev =~ m{\bCRIT(ICAL)?\b}i;     #bold red
+    $zon = chr(27).'[1;31m'     if $sev =~ m{\bFAIL(URE)?\b}i;      #bold red
+    $zon = chr(27).'[1;31m'     if $sev =~ m{\bFATAL\b}i;           #bold red
+    $zon = chr(27).'[31m'       if $sev =~ m{\bERR(OR)?\b}i;        #red
+    $zon = chr(27).'[33m'       if $sev =~ m{\bWARN(ING)?\b}i;      #yellow
+    $zon = chr(27).'[36m'       if $sev =~ m{\bNOTE\b}i;            #cyan
+    $zon = chr(27).'[32m'       if $sev =~ m{\bINFO(RMATION)?\b}i;  #green
+    $zon = chr(27).'[1;32m'     if $sev =~ m{\bOK\b}i;              #bold green
+    $zon = chr(27).'[37;43m'    if $sev =~ m{\bDEBUG\b}i;           #grey on yellow
+    $zon = chr(27).'[30;47m'    if $sev =~ m{\bNOTRY\b}i;           #black on grey
+    $zon = chr(27).'[1;37;47m'  if $sev =~ m{\bUNK(OWN)?\b}i;       #bold white on gray
+    $zon = chr(27).'[32m'       if $sev =~ m{\bYES\b}i;             #green
+    $zon = chr(27).'[31m'       if $sev =~ m{\bNO\b}i;              #red
     $zoff = chr(27).'[0m'       if $zon;
     return $zon.$str.$zoff;
 }
@@ -635,7 +633,7 @@ Term::Emit - Print with indentation, status, and closure
 
 =head1 VERSION
 
-This document describes Term::Emit version 0.0.1
+This document describes Term::Emit version 0.0.2
 
 
 =head1 SYNOPSIS
@@ -659,10 +657,10 @@ For a script like this:
 You get this output:
 
    System parameter updates...
-     CLOCK_UTC........................................................ [OK]
-     NTP Servers...................................................... [ERROR]
-     DNS Servers...................................................... [WARN]
-   System parameter updates........................................... [DONE]
+     CLOCK_UTC................................................. [OK]
+     NTP Servers............................................... [ERROR]
+     DNS Servers............................................... [WARN]
+   System parameter updates.................................... [DONE]
 
 =head1 DESCRIPTION
 
@@ -685,19 +683,19 @@ It begins by printing:
 Then it does "whatchamacallit" and "something else".  When these are complete
 it adds the rest of the line: a bunch of dots and the [DONE].
 
-    Reconfiguring the grappolator...................................... [DONE]
+    Reconfiguring the grappolator............................... [DONE]
 
 Your do_whatchamacallit() and do_something_else() subroutines may also C<emit>
 what they're doing, and indicate success or failure or whatever, so you
 can get nice output like this:
 
     Reconfiguring the grappolator...
-      Processing whatchamacallit....................................... [WARN]
+      Processing whatchamacallit................................ [WARN]
       Fibulating something else...
-        Fibulation phase one........................................... [OK]
-        Fibulation phase two........................................... [ERROR]
-        Wrapup of fibulation........................................... [OK]
-    Reconfiguring the grappolator...................................... [DONE]
+        Fibulation phase one.................................... [OK]
+        Fibulation phase two.................................... [ERROR]
+        Wrapup of fibulation.................................... [OK]
+    Reconfiguring the grappolator............................... [DONE]
 
 
 A series of examples will make I<Term::Emit> easier to understand.
@@ -716,7 +714,7 @@ First this prints:
 Then after the "frobnication" process is complete, the line is
 continued so it looks like this:
 
-    Frobnicating the biffolator....................................... [DONE]
+    Frobnicating the biffolator................................ [DONE]
 
 =head2 Autocompletion
 
@@ -761,6 +759,8 @@ Those on the same line are considered equal in severity:
     DEBUG => 4,
     NOTRY => 3,
     UNK   => 2,
+    YES   => 1,
+    NO    => 0,
 
 You may make up your own severities if what you want is not listed.
 Please keep the length to 5 characters or less, otherwise the text may wrap.
@@ -793,6 +793,8 @@ only simpler:
     emit_debug      emit_done "DEBUG";     syslog: Really boring diagnostic output.
     emit_notry      emit_done "NOTRY";     Untried
     emit_unk        emit_done "UNK";       Unknown
+    emit_yes        emit_done "YES";       Yes
+    emit_no         emit_done "NO";        No
 
 We'll change our simple example to give a FATAL completion:
 
@@ -803,7 +805,7 @@ We'll change our simple example to give a FATAL completion:
 
 Here's how it looks:
 
-    Frobnicating the biffolator....................................... [FATAL]
+    Frobnicating the biffolator................................ [FATAL]
 
 =head3 Severity Colors
 
@@ -823,11 +825,13 @@ Here's the colors:
     WARN     yellow (usually looks orange)
     NOTE     cyan
     INFO     green
-    OK       green
+    OK       bold green
     DEBUG    grey on yellow/orange
     NOTRY    black on grey
     UNK      bold white on grey
     DONE     default font color (unchanged)
+    YES      green
+    NO       red
 
 To use colors, do this when you I<use> Term::Emit:
 
@@ -1001,26 +1005,26 @@ just pass the string.  Here's some popular bullet definitions:
 Here's an example with bullets turned on:
 
  * Loading system information...
- +   Defined IP interface information................................ [OK]
- +   Running IP interface information................................ [OK]
- +   Web proxy definitions........................................... [OK]
- +   NTP Servers..................................................... [OK]
- +   Timezone settings............................................... [OK]
- +   Internal clock UTC setting...................................... [OK]
- +   sshd Revocation settings........................................ [OK]
- * Loading system information........................................ [OK]
- * Loading current CAS parameters.................................... [OK]
+ +   Defined IP interface information......................... [OK]
+ +   Running IP interface information......................... [OK]
+ +   Web proxy definitions.................................... [OK]
+ +   NTP Servers.............................................. [OK]
+ +   Timezone settings........................................ [OK]
+ +   Internal clock UTC setting............................... [OK]
+ +   sshd Revocation settings................................. [OK]
+ * Loading system information................................. [OK]
+ * Loading current CAS parameters............................. [OK]
  * RDA CAS Setup 8.10-2...
  +   Updating configuration...
- -     System parameter updates...................................... [OK]
+ -     System parameter updates............................... [OK]
  -     Updating CAS parameter values...
-         Updating default web page index............................. [OK]
- -     Updating CAS parameter values................................. [OK]
- +   Updating configuration.......................................... [OK]
- +   Forced stopping web server...................................... [OK]
- +   Restarting web server........................................... [OK]
- +   Loading crontab jobs...remcon................................... [OK]
- * RDA CAS Setup 8.10-2.............................................. [DONE]
+         Updating default web page index...................... [OK]
+ -     Updating CAS parameter values.......................... [OK]
+ +   Updating configuration................................... [OK]
+ +   Forced stopping web server............................... [OK]
+ +   Restarting web server.................................... [OK]
+ +   Loading crontab jobs...remcon............................ [OK]
+ * RDA CAS Setup 8.10-2....................................... [DONE]
 
 =head2 Mixing Term::Emit with print'ed Output
 
@@ -1126,6 +1130,8 @@ and the given completion severity.
 
 =head3 C<emit_info>
 
+=head3 C<emit_no>
+
 =head3 C<emit_note>
 
 =head3 C<emit_notry>
@@ -1135,6 +1141,8 @@ and the given completion severity.
 =head3 C<emit_unk>
 
 =head3 C<emit_warn>
+
+=head3 C<emit_yes>
 
 All these are convienence methods that call C<emit_done()>
 with the indicated severity.  For example, C<emit_fail()> is
@@ -1525,6 +1533,7 @@ such damages.
 
 =for me to do:
     * Get this to work on 5.006
+    * Validate any given options
     * Fixup anonymous literals
     * Hmmm... how to setopts() the default -fh  vs. setopts() for a particular -fh?
     * Make a 'print' wrapper to keep track of position,

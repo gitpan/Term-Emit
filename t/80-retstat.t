@@ -1,7 +1,7 @@
 #!perl -w
 use strict;
 use warnings;
-use Test::More tests => 50;
+use Test::More tests => 56;
 
 use Term::Emit qw/:all/, {-bullets => 0,
                           -width   => 40};
@@ -33,6 +33,8 @@ my %sevlev = (EMERG => 15,
               UNK   => 2,
               OTHER => 1,
               NONE  => 1,
+              YES   => 1,
+              NO    => 0,
               Blah  => 1,
              );
 my $out = undef;

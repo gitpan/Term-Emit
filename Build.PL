@@ -8,7 +8,7 @@ my $builder = Module::Build->new(
     dist_author         => 'Steve Roscio <roscio@cpan.org>',
     dist_version_from   => 'lib/Term/Emit.pm',
     requires => {
-        'Scope::Upper'  => 0.6,
+        'Scope::Upper'  => '0.06',
         'Test::More'    => 0,
     },
     add_to_cleanup      => [ 'Term-Emit-*' ],

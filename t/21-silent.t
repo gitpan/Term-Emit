@@ -1,7 +1,7 @@
 #!perl -w
 use strict;
 use warnings;
-use Test::More tests => 21;
+use Test::More tests => 23;
 
 my $out;
 use Term::Emit qw/:all/, {-bullets => 0,

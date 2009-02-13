@@ -1,7 +1,7 @@
 #!perl -w
 use strict;
 use warnings;
-use Test::More tests => 29;
+use Test::More tests => 31;
 
 my $out;
 use Term::Emit qw/:all/, {-bullets => ["* ", "+ ", "-", "."], #note no space after dash & dot, to test padding

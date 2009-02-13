@@ -1,5 +1,16 @@
 Revision history for Term-Emit
 
-0.0.1  2009-01-26 00:49:00Z
-       Initial release.
+0.0.2  2009-02-13 17:13:14Z
+        Added test for -closetext
+        The 'use' of Scope::Upper is order sensitive for keywords
+          on some oses; swapped these keywords.
+        Removed the 'syslog' export tag.  It's unlikely this would
+          ever be used.
+        Added emit_yes() and emit_no() convienence routines.
+        Fixed dependency on Scope::Upper, I had 0.6 when it's 0.06;
+          and a trailing space in the name string too.
+        Modified emit_done to allow a zero return status.
+        Shorted up some POD examples so they fit on a man-ified page.
 
+0.0.1  2009-01-26 00:49:00Z
+        Initial release.

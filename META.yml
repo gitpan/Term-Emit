@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:                Term-Emit
-version:             0.0.1
+version:             0.0.2
 abstract:            Print with indentation, status, and closure
 license:             ~
 author:              
@@ -8,7 +8,7 @@ author:
 generated_by:        ExtUtils::MakeMaker version 6.42
 distribution_type:   module
 requires:     
-    Scope::Upper :                 0.6
+    Scope::Upper:                  0.06
     Test::More:                    0
 meta-spec:
     url:     http://module-build.sourceforge.net/META-spec-v1.3.html

@@ -1,7 +1,7 @@
 #!perl -w
 use strict;
 use warnings;
-use Test::More tests => 28;
+use Test::More tests => 30;
 use Term::Emit;
 
 # _oid(): output identifier function
@@ -24,10 +24,13 @@ my %colors = (EMERG => '[1;31;40m',
               WARN  => '[33m',
               NOTE  => '[36m',
               INFO  => '[32m',
-              OK    => '[32m',
+              OK    => '[1;32m',
               DEBUG => '[37;43m',
               NOTRY => '[30;47m',
-              UNK   => '[1;37;47m');
+              UNK   => '[1;37;47m',
+              YES   => '[32m',
+              NO    => '[31m',
+             );
 foreach my $sev (keys %colors) {
     my $code = $colors{$sev};
     is(Term::Emit::_colorize("abc", $sev), chr(27).$code.'abc'.chr(27).'[0m', "_colorize(): severity $sev");

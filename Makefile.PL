@@ -9,7 +9,7 @@ WriteMakefile(
     ABSTRACT_FROM       => 'lib/Term/Emit.pm',
     PL_FILES            => {},
     PREREQ_PM => {
-        'Scope::Upper ' => "0.6",
+        'Scope::Upper'  => '0.06',
         'Test::More'    => 0,
     },
     dist                => { COMPRESS => 'gzip -9f', SUFFIX => 'gz', },
