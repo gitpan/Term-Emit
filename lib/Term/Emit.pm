@@ -1,6 +1,6 @@
 # Term::Emit - Print with indentation, status, and closure
 #
-#  $Id: Emit.pm 21 2009-02-13 17:24:11Z steve $
+#  $Id: Emit.pm 24 2009-12-28 16:53:15Z steve $
 
 package Term::Emit;
 use warnings;
@@ -11,7 +11,7 @@ use Exporter;
 use base qw/Exporter/;
 use Scope::Upper 0.06 qw/:words reap/;
 
-our $VERSION = '0.0.2';
+our $VERSION = '0.0.3';
 our @EXPORT_OK = qw/emit emit_over emit_prog emit_text emit_done emit_none
                     emit_emerg
                     emit_alert
@@ -25,7 +25,7 @@ our @EXPORT_OK = qw/emit emit_over emit_prog emit_text emit_done emit_none
                     emit_unk
                     emit_yes
                     emit_no/;
-our %EXPORT_TAGS = (all      => [@EXPORT_OK]);
+our %EXPORT_TAGS = (all => [@EXPORT_OK]);
 our %SEVLEV = (EMERG => 15,
                ALERT => 13,
                CRIT  => 11, FAIL => 11, FATAL => 11,
@@ -37,8 +37,8 @@ our %SEVLEV = (EMERG => 15,
                NOTRY => 3,
                UNK   => 2,
                OTHER => 1,
-               YES   => 1,
-               NO    => 0,
+               YES   => 1,  ### TODO:  Should YES be 0 and NO be 1? Makes UNIX sense, right?
+               NO    => 0,  ###     Also, NO=1 fits VMS-sense of good/bad low bit (but inverted, even=bad in VMSland)
               );
 our %BASE_OBJECT = ();
 
@@ -61,7 +61,7 @@ sub base {
 
 sub clone {
     my $this = shift;   # Object to clone
-    return Term::Emit->new(%{$this}, @_);
+    return Term::Emit->new(%{$this}, _clean_opts(@_));
 }
 
 sub import {
@@ -94,40 +94,57 @@ sub setopts {
     my ($this, $opts, %args) = _process_args(@_);
 
     # Merge & clean 'em
-    %args = (%{$opts}, %args);
-#    %args = _clean_opts(%args);  ###why does this not work here??
-    while (my ($key, $val) = each %args) {
-        delete $args{$key};
-        $key =~ s{^\s*-?(\w+)\s*}{$1}sxm;
-        $args{lc $key} = $val;
-    }
+    %args = (%{$opts},%args);
+    %args = _clean_opts(%args);  ###why does this not work here?? -fh vs fh
 
     # Process args
     my $deffh = select();
     no strict 'refs';
-    $this->{fh}        = $args{fh}        || $this->{fh}        || \*{$deffh};
+    $this->{fh}        = $args{fh}
+                       || $this->{fh}
+                       || \*{$deffh};
     use strict 'refs';
-    $this->{bullets}   = exists $args{bullets} ? $args{bullets}
-                                               : exists $this->{bullets} ? $this->{bullets}
-                                                                         : 0;
-    $this->{closestat} = $args{closestat} || $this->{closestat} || 'DONE';
-    $this->{color}     = $args{color}     || $this->{color}     || 0;
-    $this->{ellipsis}  = $args{ellipsis}  || $this->{ellipsis}  || '...';
-    $this->{envbase}   = $args{envbase}   || $this->{envbase}   || 'emit_fd';
-    $this->{maxdepth}  = exists $args{maxdepth} ? $args{maxdepth}
-                                                : defined $this->{maxdepth} ? $this->{maxdepth}
-                                                                            : undef;     # Max depth to show, undef=all, 0=none, 3=just first 3 levels, etc
-    $this->{step}      = exists $args{step} ? $args{step}
-                                            : defined $this->{step} ? $this->{step}
-                                                                    : 2;    # Indentation step level
-#    $this->{timefmt}   = $args{timefmt}   || $this->{timefmt}   || undef;   # Timestamp format
-    $this->{trailer}   = $args{trailer}   || $this->{trailer}   || q{.};
-    $this->{width}     = $args{width}     || $this->{width}     || 80;
+    $this->{envbase}   = $args{envbase}
+                       || $this->{envbase}
+                       || 'term_emit_fd';   ### TODO: apply to all envvars we use, not just _fd
+    $this->{bullets}   = exists $ENV{term_emit_bullets} ? $ENV{term_emit_bullets}
+                       : exists $args{bullets}          ? $args{bullets}
+                       : exists $this->{bullets}        ? $this->{bullets}
+                       : 0;
+    $this->{closestat} = $args{closestat}
+                       || $this->{closestat}
+                       || 'DONE';
+    $this->{color}     = exists $ENV{term_emit_color}   ? $ENV{term_emit_color}
+                       : $args{color}
+                       || $this->{color}
+                       || 0;
+    $this->{ellipsis}  = exists $ENV{term_emit_ellipsis}? $ENV{term_emit_ellipsis}
+                       : $args{ellipsis}
+                       || $this->{ellipsis}
+                       || '...';
+    $this->{maxdepth}  = exists $ENV{term_emit_maxdepth}? $ENV{term_emit_maxdepth}
+                       : exists $args{maxdepth}         ? $args{maxdepth}
+                       : $this->{maxdepth}; #undef=all, 0=none, 3=just first 3 levels, etc
+    $this->{step}      = exists $ENV{term_emit_step}    ? $ENV{term_emit_step}
+                       : exists $args{step}             ? $args{step}
+                       : defined $this->{step}          ? $this->{step}
+                       : 2;
+    $this->{trailer}   = exists $ENV{term_emit_trailer} ? $ENV{term_emit_trailer}
+                       : $args{trailer}
+                       || $this->{trailer}
+                       || q{.};
+    $this->{width}     = exists $ENV{term_emit_width}   ? $ENV{term_emit_width}
+                       : $args{width}
+                       || $this->{width}
+                       || 80;
 
+#    $this->{timefmt}   = $args{timefmt}   || $this->{timefmt}   || undef;   # Timestamp format
 #    $this->{pos} = $args{pos}
 #        if defined $args{pos};
 
     # Recompute a few things
+# TODO: Allow bullets to be given as CSV:  "* ,+ ,- ,  " for example.
+# TODO: Put this in a sub of its own.
     $this->{bullet_width} = 0;
     if (ref $this->{bullets} eq 'ARRAY') {
         foreach my $b (@{$this->{bullets}}) {
@@ -149,7 +166,7 @@ sub emit {
     my ($this, $opts, @args) = _process_args(@_);
     my $jn = defined $,? $, : q{};
     if (@args && ref($args[0]) eq 'ARRAY') {
-        # Using [otext, ctext] notation
+        # Using [opentext, closetext] notation
         my $pair = shift @args;
         my $otext = $pair->[0] || '';
         my $ctext = $pair->[1] || $otext;
@@ -303,7 +320,7 @@ sub emit_done {
 
     # Reason option?
     my $reason = $opts->{reason};
-    $s = emit_text({adjust_level => 2, %{$opts}}, $reason)
+    $s = emit_text($opts, $reason)
         if $reason;
     return $s unless $s;
 
@@ -390,6 +407,7 @@ sub emit_text {
     return $s unless $s;
 
     # Level adjust?
+    $level++;   # We're over by one by default
     $level += $opts->{adjust_level}
         if $opts->{adjust_level} && $opts->{adjust_level} =~ m{^-?\d+$}sxm;
 
@@ -434,6 +452,7 @@ sub _bullet {
         my $pmax = $#{$this->{bullets}};
         $bullet = $this->{bullets}->[$level > $pmax? $pmax : $level];
     }
+# TODO: Allow bullets to be given as CSV:  "* ,+ ,- ,  " for example.
     elsif ($this->{bullets}) {
         $bullet = $this->{bullets};
     }
@@ -450,8 +469,10 @@ sub _bullet {
 sub _clean_opts {
     my %in = @_;
     my %out = ();
-    while (my ($k,$v) = each %in) {
-        $k =~ s{^-}{}sxm;
+    foreach my $k (keys %in) {
+        my $v = $in{$k};
+        delete $in{$k};
+        $k =~ s{^\s*-?(\w+)\s*}{$1}sxm;
         $out{lc $k} = $v;
     }
     return %out;
@@ -491,7 +512,7 @@ sub _envvar {
     return $this->{envbase} . _oid($this->{fh});
 }
 
-#
+
 # Return an output identifier for the filehandle
 #
 sub _oid {
@@ -633,7 +654,7 @@ Term::Emit - Print with indentation, status, and closure
 
 =head1 VERSION
 
-This document describes Term::Emit version 0.0.2
+This document describes Term::Emit version 0.0.3
 
 
 =head1 SYNOPSIS
@@ -876,8 +897,8 @@ Pretty cool, eh?
 
 =head2 Closing with Different Text
 
-Suppose you want the opeining and closing messages for a step
-to be different.  Such as I<"Starting gompchomper"> and I<"End of the gomp">.
+Suppose you want the opening and closing messages to be different.
+Such as I<"Starting gompchomper"> and I<"End of the gomp">.
 
 To do this, use the C<-closetext> option, like this:
 
@@ -893,6 +914,17 @@ C<emit> with a pair of strings as an array reference, like this:
 
 Using the array reference notation is easier, and it will override
 the -closetext option if you use both.  So don't use both.
+
+=head3 Changing the 'close text' afterwards
+
+*** TODO:  Provide an easy way to do this! ***
+
+OK, you got me!  I didn't think of this case when I built this module.
+
+It's not easy to do now, even with access to the base object.
+For now, I recommend you use -reason and give extra reason text.
+When I fix it, it'll probably take the form of setopts(-closetext => "blah")
+and emit_done {-closetext=>"blah"};
 
 =head2 Closing with Different Severities, or... Why Autocompletion is Nice
 
@@ -1044,7 +1076,6 @@ left the cursor.  Do this by setting the I<-pos> option:
 Nothing is exported by default.  You'll want to do one of these:
 
     use Term::Emit qw/emit emit_done/;    # To get just these two functions
-    use Term::Emit qw/:syslog/;           # To get base functions plus syslog severities only
     use Term::Emit qw/:all/;              # To get all functions
 
 Most of the time, you'll want the :all form.
@@ -1331,7 +1362,7 @@ This programming metaphor is commonly used:
     .
     .
     my $fail_reason = do_something_that_may_fail();
-    return emit_fail {-reason => $fail_reason)
+    return emit_fail {-reason => $fail_reason}
         if $fail_reason;
     .
     .
@@ -1401,7 +1432,7 @@ to determine your device's width:
 I<Term::Emit> requires no configuration files or environment variables.
 However, it does set environment variables with this form of name:
 
-    emit_fd#_th#
+    term_emit_fd#_th#
 
 This envvar holds the current level of messages (represented
 visually by indentation), so that indentation can be smoothly
@@ -1409,14 +1440,14 @@ maintained across process contexts.
 
 In this envvar's name, fd# is the fileno() of the output file handle to which
 the messages are written.  By default output is to STDERR,
-which has a fileno of 2, so the envvar would be C<emit_fd2>.
-If output is being written to a string (C<-fh => \$some_string>),
-then fd# is the string "str", for example C<emit_fdstr>
+which has a fileno of 2, so the envvar would be C<term_emit_fd2>.
+If output is being written to a string (C<<-fh => \$some_string>>),
+then fd# is the string "str", for example C<term_emit_fdstr>
 
 When Term::Emit is used with threads, the thread ID is placed
 in th# in the envvar.
 Thus for thread #7, writing Term::Emit messages to STDERR, the envvar
-would be C<emit_fd2_th7>.
+would be C<term_emit_fd2_th7>.
 For the main thread, th# and the leading underscore are omitted.
 
 Under normal operation, this environment variable is deleted
@@ -1532,7 +1563,7 @@ such holder or other party has been advised of the possibility of
 such damages.
 
 =for me to do:
-    * Get this to work on 5.006
+    * Get this to work back at 5.006
     * Validate any given options
     * Fixup anonymous literals
     * Hmmm... how to setopts() the default -fh  vs. setopts() for a particular -fh?
@@ -1540,13 +1571,25 @@ such damages.
        and POD about interaction with print
        then a function to reset the internal position (or use a setopts() attr)
     * Make emit() use indirect object notation so it's a drop-in for print
-    * Read envvars for secondary defaults, so qx() wrapping looks consistent.
+        ** But do we want the overhead of IO::Handle?
     * Does it make sense to do Severity level filtering?
        i.e., don't show anything >= levelV ?
     * Timestamps - maybe do in another module?
+        Allow timestamps in something akin to sprintf format within the strings.
+        IE, solve this problem:
+            emit ["Starting Frobnication process at %T",
+                  "Frobnication process complete at %T"];
     * emit_more : another emit at the same level as the prior?
        for example:
            emit "yomama";
            emit_more "yopapa";  # does not start a new context, like emit_text
              but at upper level (or call it "yell"?)
     * Thread support
+    * Add a "Closing Silently" section up around the closing w/diff text section.
+    * Read envvars for secondary defaults, so qx() wrapping looks consistent.
+    * Envvars for color, width, maxdepth, etc...
+       ** export the envvars (in setopts()) so wrapped scripts pick 'em up
+       ** clean up the envvars, iff we set 'em
+       ** make 'em work by fd# as well, not just default.  IE, have
+            term_emit_color apply to the default fd, but
+            term_emit_fd2_color applies to stdout.  And so on.

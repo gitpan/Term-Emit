@@ -49,18 +49,18 @@ $out = q{};
   }
 }
 is($out, "Level 0...\n".
-         "  Explanation 0\n".
+         "    Explanation 0\n".
          "  Level 1...\n".
-         "    Explanation 1\n".
+         "      Explanation 1\n".
          "    Level 2...\n".
-         "      Explanation 2\n".
+         "        Explanation 2\n".
          "      Level 3...\n".
-         "        Explanation 3\n".
+         "          Explanation 3\n".
          "        Level 4...\n".
-         "          Explanation 4\n".
+         "            Explanation 4\n".
          "        Level 4............ [DONE]\n".
          "      Level 3.............. [DONE]\n".
          "    Level 2................ [DONE]\n".
          "  Level 1.................. [DONE]\n".
-         "Level 0.................... [DONE]\n",  "Added text consolidates to base 0");
+         "Level 0.................... [DONE]\n",  "Additional text consolidates to base 0");
 

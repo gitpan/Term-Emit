@@ -1,4 +1,5 @@
 #!perl -w
+### TODO: Fix the log file path so it works on non-unix platforms!!!
 use strict;
 use warnings;
 use Test::More tests => 2;
@@ -7,7 +8,9 @@ my $out;
 use Term::Emit qw/:all/, {-fh      => \$out,
                     -width   => 50};
 
-my $logfnam = "/tmp/50-fd-test-$$.tmp";
+my $logfnam = $^O eq "MSWin32"
+    ? "C:\\50-fd-test-$$.tmp"
+    : "/tmp/50-fd-test-$$.tmp";
 open (LOG, ">$logfnam")
   or die "*** Could not create log file: $!\n";
 
