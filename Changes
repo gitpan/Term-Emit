@@ -1,5 +1,11 @@
 Revision history for Term-Emit
 
+0.0.4  2012-09-12 19:14:13Z
+        Fix POD: where I said -colors, I meant -color (singular).
+        Fix POD: broken link to options section.
+        Added -showseverity option.
+        Added -timestamp option.
+
 0.0.3  2010-06-17 22:02:14Z
         Bug 51923: Fix error in POD - patch submitted by FWIE
 

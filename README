@@ -1,4 +1,4 @@
-Term-Emit version 0.0.3
+Term-Emit version 0.0.4
 
 The Term::Emit package is used to print balanced and nested messages
 with a completion status.  These messages indent within eachother,

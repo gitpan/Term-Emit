@@ -1,6 +1,6 @@
 # Term::Emit - Print with indentation, status, and closure
 #
-#  $Id: Emit.pm 24 2009-12-28 16:53:15Z steve $
+#  $Id: Emit.pm 395 2012-09-06 18:21:50Z steve $
 
 package Term::Emit;
 use warnings;
@@ -11,44 +11,52 @@ use Exporter;
 use base qw/Exporter/;
 use Scope::Upper 0.06 qw/:words reap/;
 
-our $VERSION = '0.0.3';
+our $VERSION   = '0.0.4';
 our @EXPORT_OK = qw/emit emit_over emit_prog emit_text emit_done emit_none
-                    emit_emerg
-                    emit_alert
-                    emit_crit emit_fail emit_fatal
-                    emit_error
-                    emit_warn
-                    emit_note
-                    emit_info emit_ok
-                    emit_debug
-                    emit_notry
-                    emit_unk
-                    emit_yes
-                    emit_no/;
+    emit_emerg
+    emit_alert
+    emit_crit emit_fail emit_fatal
+    emit_error
+    emit_warn
+    emit_note
+    emit_info emit_ok
+    emit_debug
+    emit_notry
+    emit_unk
+    emit_yes
+    emit_no/;
 our %EXPORT_TAGS = (all => [@EXPORT_OK]);
-our %SEVLEV = (EMERG => 15,
-               ALERT => 13,
-               CRIT  => 11, FAIL => 11, FATAL => 11,
-               ERROR => 9,
-               WARN  => 7,
-               NOTE  => 6,
-               INFO  => 5, OK => 5,
-               DEBUG => 4,
-               NOTRY => 3,
-               UNK   => 2,
-               OTHER => 1,
-               YES   => 1,  ### TODO:  Should YES be 0 and NO be 1? Makes UNIX sense, right?
-               NO    => 0,  ###     Also, NO=1 fits VMS-sense of good/bad low bit (but inverted, even=bad in VMSland)
-              );
-our %BASE_OBJECT = ();
 
+use constant MIN_SEV => 0;
+use constant MAX_SEV => 15;
+our %SEVLEV = (
+    EMERG => 15,
+    ALERT => 13,
+    CRIT  => 11,
+    FAIL  => 11,
+    FATAL => 11,
+    ERROR => 9,
+    WARN  => 7,
+    NOTE  => 6,
+    INFO  => 5,
+    OK    => 5,
+    DEBUG => 4,
+    NOTRY => 3,
+    UNK   => 2,
+    OTHER => 1,
+    YES   => 1,
+    NO    => 0,
+);
+our %BASE_OBJECT = ();
 
 sub new {
     my $proto = shift;
-    my $class = ref($proto) || $proto;  # Get the class name
-    my $this  = {pos  => 0,     # Current output column number
-                 progwid => 0,  # Width of last progress message emitted
-                 msgs => []};   # Closing message stack
+    my $class = ref($proto) || $proto;    # Get the class name
+    my $this  = {
+        pos     => 0,                     # Current output column number
+        progwid => 0,                     # Width of last progress message emitted
+        msgs    => []
+    };    # Closing message stack
     bless $this, $class;
     $this->setopts(@_);
     return $this;
@@ -60,7 +68,7 @@ sub base {
 }
 
 sub clone {
-    my $this = shift;   # Object to clone
+    my $this = shift;    # Object to clone
     return Term::Emit->new(%{$this}, _clean_opts(@_));
 }
 
@@ -73,7 +81,7 @@ sub import {
     while (@_) {
         my $arg = shift;
         if (ref($arg) eq 'HASH') {
-            %opts = (%opts, %{$arg}); #merge
+            %opts = (%opts, %{$arg});    #merge
             next;
         }
         push @args, $arg;
@@ -94,57 +102,78 @@ sub setopts {
     my ($this, $opts, %args) = _process_args(@_);
 
     # Merge & clean 'em
-    %args = (%{$opts},%args);
-    %args = _clean_opts(%args);  ###why does this not work here?? -fh vs fh
+    %args = (%{$opts}, %args);
+    %args = _clean_opts(%args);    ###why does this not work here?? -fh vs fh
 
     # Process args
     my $deffh = select();
     no strict 'refs';
-    $this->{fh}        = $args{fh}
-                       || $this->{fh}
-                       || \*{$deffh};
+    $this->{fh} 
+        = $args{fh}
+        || $this->{fh}
+        || \*{$deffh};
     use strict 'refs';
-    $this->{envbase}   = $args{envbase}
-                       || $this->{envbase}
-                       || 'term_emit_fd';   ### TODO: apply to all envvars we use, not just _fd
-    $this->{bullets}   = exists $ENV{term_emit_bullets} ? $ENV{term_emit_bullets}
-                       : exists $args{bullets}          ? $args{bullets}
-                       : exists $this->{bullets}        ? $this->{bullets}
-                       : 0;
-    $this->{closestat} = $args{closestat}
-                       || $this->{closestat}
-                       || 'DONE';
-    $this->{color}     = exists $ENV{term_emit_color}   ? $ENV{term_emit_color}
-                       : $args{color}
-                       || $this->{color}
-                       || 0;
-    $this->{ellipsis}  = exists $ENV{term_emit_ellipsis}? $ENV{term_emit_ellipsis}
-                       : $args{ellipsis}
-                       || $this->{ellipsis}
-                       || '...';
-    $this->{maxdepth}  = exists $ENV{term_emit_maxdepth}? $ENV{term_emit_maxdepth}
-                       : exists $args{maxdepth}         ? $args{maxdepth}
-                       : $this->{maxdepth}; #undef=all, 0=none, 3=just first 3 levels, etc
-    $this->{step}      = exists $ENV{term_emit_step}    ? $ENV{term_emit_step}
-                       : exists $args{step}             ? $args{step}
-                       : defined $this->{step}          ? $this->{step}
-                       : 2;
-    $this->{trailer}   = exists $ENV{term_emit_trailer} ? $ENV{term_emit_trailer}
-                       : $args{trailer}
-                       || $this->{trailer}
-                       || q{.};
-    $this->{width}     = exists $ENV{term_emit_width}   ? $ENV{term_emit_width}
-                       : $args{width}
-                       || $this->{width}
-                       || 80;
+    $this->{envbase} 
+        = $args{envbase}
+        || $this->{envbase}
+        || 'term_emit_fd';    ### TODO: apply to all envvars we use, not just _fd
+    $this->{bullets}
+        = exists $ENV{term_emit_bullets} ? $ENV{term_emit_bullets}
+        : exists $args{bullets}          ? $args{bullets}
+        : exists $this->{bullets}        ? $this->{bullets}
+        :                                  0;
+    $this->{closestat} 
+        = $args{closestat}
+        || $this->{closestat}
+        || 'DONE';
+    $this->{color}
+        = exists $ENV{term_emit_color}
+        ? $ENV{term_emit_color}
+        : $args{color}
+        || $this->{color}
+        || 0;
+    $this->{ellipsis}
+        = exists $ENV{term_emit_ellipsis}
+        ? $ENV{term_emit_ellipsis}
+        : $args{ellipsis}
+        || $this->{ellipsis}
+        || '...';
+    $this->{maxdepth}
+        = exists $ENV{term_emit_maxdepth} ? $ENV{term_emit_maxdepth}
+        : exists $args{maxdepth}          ? $args{maxdepth}
+        :   $this->{maxdepth};    #undef=all, 0=none, 3=just first 3 levels, etc
+    $this->{showseverity}
+        = exists $ENV{term_emit_showseverity} ? $ENV{term_emit_showseverity}
+        : exists $args{showseverity}          ? $args{showseverity}
+        :                                  $this->{showseverity};
+    $this->{step}
+        = exists $ENV{term_emit_step} ? $ENV{term_emit_step}
+        : exists $args{step}          ? $args{step}
+        : defined $this->{step}       ? $this->{step}
+        :                               2;
+    $this->{timestamp} = $args{timestamp}
+        || $this->{timestamp}
+        || 0;
+    $this->{trailer}
+        = exists $ENV{term_emit_trailer}
+        ? $ENV{term_emit_trailer}
+        : $args{trailer}
+        || $this->{trailer}
+        || q{.};
+    $this->{width}
+        = exists $ENV{term_emit_width}
+        ? $ENV{term_emit_width}
+        : $args{width}
+        || $this->{width}
+        || 80;
 
-#    $this->{timefmt}   = $args{timefmt}   || $this->{timefmt}   || undef;   # Timestamp format
-#    $this->{pos} = $args{pos}
-#        if defined $args{pos};
+    #    $this->{timefmt}   = $args{timefmt}   || $this->{timefmt}   || undef;   # Timestamp format
+    #    $this->{pos} = $args{pos}
+    #        if defined $args{pos};
 
     # Recompute a few things
-# TODO: Allow bullets to be given as CSV:  "* ,+ ,- ,  " for example.
-# TODO: Put this in a sub of its own.
+    # TODO: Allow bullets to be given as CSV:  "* ,+ ,- ,  " for example.
+    # TODO: Put this in a sub of its own.
     $this->{bullet_width} = 0;
     if (ref $this->{bullets} eq 'ARRAY') {
         foreach my $b (@{$this->{bullets}}) {
@@ -155,7 +184,7 @@ sub setopts {
     elsif ($this->{bullets}) {
         $this->{bullet_width} = length($this->{bullets});
 
-    return 0;
+        return 0;
     }
 }
 
@@ -164,10 +193,11 @@ sub setopts {
 #
 sub emit {
     my ($this, $opts, @args) = _process_args(@_);
-    my $jn = defined $,? $, : q{};
+    my $jn = defined $, ? $, : q{};
     if (@args && ref($args[0]) eq 'ARRAY') {
+
         # Using [opentext, closetext] notation
-        my $pair = shift @args;
+        my $pair  = shift @args;
         my $otext = $pair->[0] || '';
         my $ctext = $pair->[1] || $otext;
         unshift @args, $otext;
@@ -175,8 +205,9 @@ sub emit {
     }
     my $msg = join $jn, @args;
     if (!@args) {
+
         # Use our caller's subroutine name as the message
-        (undef,undef,undef,$msg) = caller(1);
+        (undef, undef, undef, $msg) = caller(1);
         $msg =~ s{^main::}{}sxm;
     }
 
@@ -187,15 +218,17 @@ sub emit {
         if wantarray;
 
     # Store context
-    my $cmsg = defined $opts->{closetext} ? $opts->{closetext}
-                                          : $msg;
+    my $cmsg
+        = defined $opts->{closetext}
+        ? $opts->{closetext}
+        : $msg;
     push @{$this->{msgs}}, [$msg, $cmsg];
     my $level = $ENV{$this->_envvar()}++ || 0;
 
     # Setup the scope reaper for autoclosure
-    reap sub {$this->emit_done({%{$opts},
-                               want_level => $level},
-                               $this->{closestat})} => SCOPE(1);
+    reap sub {
+        $this->emit_done({%{$opts}, want_level => $level}, $this->{closestat});
+    } => SCOPE(1);
 
     # Filtering by level?
     return 1
@@ -204,33 +237,36 @@ sub emit {
     # Start back at the left
     my $s = 1;
     $s = $this->_spew("\n")
-         if $this->{pos};
+        if $this->{pos};
     return $s unless $s;
-    $this->{pos} = 0;
+    $this->{pos}     = 0;
     $this->{progwid} = 0;
 
     # Level adjust?
     $level += $opts->{adjust_level}
         if $opts->{adjust_level} && $opts->{adjust_level} =~ m{^-?\d+$}sxm;
 
+    # Timestamp
+    my $tsr = defined $opts->{timestamp}? $opts->{timestamp} : $this->{timestamp};
+    $tsr = \&_timestamp if $tsr && !ref($tsr);
+    my $ts = $tsr? &$tsr($level) : q{};
+
     # The message
     my $bullet = $this->_bullet($level);
     my $indent = q{ } x ($this->{step} * $level);
-    my $tlen = 0;
-    my $span = $this->{width} - length($bullet) - ($this->{step} * $level) - 10;
-    my @mlines = _wrap($msg, int($span*2/3), $span);
-    while (defined (my $txt = shift @mlines)) {
-        $s = $this->_spew($bullet . $indent . $txt);
+    my $tlen   = 0;
+    my $span   = $this->{width} - length($ts) - length($bullet) - ($this->{step} * $level) - 10;
+    my @mlines = _wrap($msg, int($span * 2 / 3), $span);
+    while (defined(my $txt = shift @mlines)) {
+        $s = $this->_spew($ts . $bullet . $indent . $txt);
         return $s unless $s;
-        $s = $this->_spew(@mlines? "\n" : $this->{ellipsis});
+        $s = $this->_spew(@mlines ? "\n" : $this->{ellipsis});
         return $s unless $s;
-        $tlen = length($txt);
-        $bullet = q{ } x $this->{bullet_width}; # Only bullet the first line
+        $tlen   = length($txt);
+        $bullet = q{ } x $this->{bullet_width};    # Only bullet the first line
+        $ts     = q{ } x length($ts);              # Only timestamp the first line
     }
-    $this->{pos} += ($this->{step} * $level)
-                  + length($bullet)
-                  + $tlen
-                  + length($this->{ellipsis});
+    $this->{pos} += length($ts) + ($this->{step} * $level) + length($bullet) + $tlen + length($this->{ellipsis});
     return 1;
 }
 
@@ -240,7 +276,8 @@ sub emit {
 sub emit_done {
     my ($this, $opts, @args) = _process_args(@_);
     my $want_level = $opts->{want_level};
-    my $sev  = shift @args || 'DONE';
+    my $sev        = shift @args || 'DONE';
+    my $sevlev     = defined $SEVLEV{uc $sev}? $SEVLEV{uc $sev} : $SEVLEV{'OTHER'};
 
     # Test that we're at the right level - do this BEFORE changing the envvar
     my $ret_level = ($ENV{$this->_envvar()} || 0) - 1;
@@ -248,16 +285,23 @@ sub emit_done {
         if defined $want_level && $ret_level != $want_level;
 
     # Decrement level
-    return
+    return $sevlev
         if !$ENV{$this->_envvar()};
     my $level = --$ENV{$this->_envvar()};
     delete $ENV{$this->_envvar()}
         if $level <= 0;
 
-    # Filtering by level?
-    if (defined($this->{maxdepth}) && $level >= $this->{maxdepth}) {
-        pop @{$this->{msgs}};   # discard it
-        return $SEVLEV{uc $sev} || $SEVLEV{'OTHER'};
+    # Filtering - level & severity
+    my $showseverity
+        = defined $opts->{showseverity}  ? $opts->{showseverity}
+        : defined($this->{showseverity}) ? $this->{showseverity}
+        :                             MAX_SEV;
+    if (   $sevlev < $showseverity
+        && defined($this->{maxdepth})
+        && $level >= $this->{maxdepth})
+    {
+        pop @{$this->{msgs}};    # discard it
+        return $sevlev;
     }
 
     # Are we silently closing this level?
@@ -266,49 +310,64 @@ sub emit_done {
         $s = $this->_spew("\n")
             if $this->{pos};
         return $s unless $s;
-        $this->{pos} = 0;
+        $this->{pos}     = 0;
         $this->{progwid} = 0;
-        pop @{$this->{msgs}};   # discard it
-        return $SEVLEV{uc $sev} || $SEVLEV{'OTHER'};
+        pop @{$this->{msgs}};    # discard it
+        return $sevlev;
     }
 
     # Make the severity text
     my $sevstr = " [$sev]\n";
-    my $slen = 8; # make left justified within max width 3+5
-    $sevstr = " [" . _colorize($sev,$sev) . "]\n"
+    my $slen   = 8;              # make left justified within max width 3+5
+    $sevstr = " [" . _colorize($sev, $sev) . "]\n"
         if $this->{color};
 
     # Re-issue message if needed
     my $msgs = pop @{$this->{msgs}};
-    my ($omsg, $cmsg) = @{$msgs};  # Opening and closing messages
-    # -(if not the same, force a re-issue)-
-    if ($this->{pos} && $omsg ne $cmsg) {
+    my ($omsg, $cmsg) = @{$msgs};    # Opening and closing messages
+                                     # -(if not the same, force a re-issue)-
+    if ($this->{pos} && ($omsg ne $cmsg)) {
+        # Closing differs from opening, so we need to re-issue with the closing
+        my $s = $this->_spew("\n");
+        return $s unless $s;
+        $this->{pos} = 0;
+    }
+    if ($this->{pos} 
+        && defined($this->{maxdepth})
+        && $level >= $this->{maxdepth}) {
+        # This would be level-filtered, but severity overrode it, so we need to re-issue
         my $s = $this->_spew("\n");
         return $s unless $s;
         $this->{pos} = 0;
     }
     if ($this->{pos} == 0) {
+        # Timestamp
+        my $tsr = defined $opts->{timestamp}? $opts->{timestamp} : $this->{timestamp};
+        $tsr = \&_timestamp if $tsr && !ref($tsr);
+        my $ts = $tsr? &$tsr($level) : q{};
+
         my $bullet = $this->_bullet($level);
         my $indent = q{ } x ($this->{step} * $level);
-        my $tlen = 0;
-        my $span = $this->{width} - ($this->{step} * $level) - 10;
-        my @mlines = _wrap($cmsg, int($span*2/3), $span);
-        while (defined (my $txt = shift @mlines)) {
+        my $tlen   = 0;
+        my $span   = $this->{width} - length($ts) - ($this->{step} * $level) - 10;
+        my @mlines = _wrap($cmsg, int($span * 2 / 3), $span);
+        while (defined(my $txt = shift @mlines)) {
             my $s;
-            $s = $this->_spew($bullet . $indent . $txt);
+            $s = $this->_spew($ts . $bullet . $indent . $txt);
             return $s unless $s;
             $s = $this->_spew("\n")
                 if @mlines;
             return $s unless $s;
-            $tlen = length($txt);
-            $bullet = q{ } x $this->{bullet_width}; # Only bullet the first line
+            $tlen   = length($txt);
+            $bullet = q{ } x $this->{bullet_width};    # Only bullet the first line
+            $ts     = q{ } x length($ts);              # Only timestamp the first line
         }
-        $this->{pos} += length($bullet) + ($this->{step} * $level) + $tlen;
+        $this->{pos} += length($ts) + length($bullet) + ($this->{step} * $level) + $tlen;
     }
 
     # Trailer
     my $ndots = $this->{width} - $this->{pos} - $slen;
-    my $s = 1;
+    my $s     = 1;
     $s = $this->_spew($this->{trailer} x $ndots)
         if $ndots > 0;
     return $s unless $s;
@@ -320,12 +379,13 @@ sub emit_done {
 
     # Reason option?
     my $reason = $opts->{reason};
+    $opts->{force} = 1; # Always give reason if we got thru above level filtering
     $s = emit_text($opts, $reason)
         if $reason;
     return $s unless $s;
 
     # Return with a severity value
-    return exists($SEVLEV{uc $sev}) ? $SEVLEV{uc $sev} : $SEVLEV{'OTHER'};
+    return $sevlev;
 }
 
 #
@@ -343,7 +403,7 @@ sub emit_over {
     my $s = 1;
     $s = $this->_spew(qq{\b} x $this->{progwid});
     return $s unless $s;
-    $s = $this->_spew( q{ }  x $this->{progwid});
+    $s = $this->_spew(q{ } x $this->{progwid});
     return $s unless $s;
     $s = $this->_spew(qq{\b} x $this->{progwid});
     return $s unless $s;
@@ -355,7 +415,7 @@ sub emit_over {
 
 sub emit_prog {
     my ($this, $opts, @args) = _process_args(@_);
-    my $jn = defined $,? $, : q{};
+    my $jn = defined $, ? $, : q{};
     my $msg = join $jn, @args;
     my $s;
 
@@ -367,21 +427,21 @@ sub emit_prog {
     # Start a new line?
     my $avail = $this->{width} - $this->{pos} - 10;
     if (length($msg) > $avail) {
-        my $level = $ENV{$this->_envvar()};
+        my $level  = $ENV{$this->_envvar()};
         my $bspace = q{ } x $this->{bullet_width};
         my $indent = q{ } x ($this->{step} * $level);
         $s = $this->_spew("\n");
         return $s unless $s;
         $s = $this->_spew($bspace . $indent);
         return $s unless $s;
-        $this->{pos} = length($bspace) + length($indent);
+        $this->{pos}     = length($bspace) + length($indent);
         $this->{progwid} = 0;
     }
 
     # The text
     $s = $this->_spew($msg);
     return $s unless $s;
-    $this->{pos} += length($msg);
+    $this->{pos}     += length($msg);
     $this->{progwid} += length($msg);
 
     return 1;
@@ -392,13 +452,13 @@ sub emit_prog {
 #
 sub emit_text {
     my ($this, $opts, @args) = _process_args(@_);
-    my $jn = defined $,? $, : q{};
+    my $jn = defined $, ? $, : q{};
     my $msg = join $jn, @args;
 
     # Filtering by level?
     my $level = $ENV{$this->_envvar()} || 0;
     return 1
-        if defined($this->{maxdepth}) && $level > $this->{maxdepth};
+        if !$opts->{force} && defined($this->{maxdepth}) && $level > $this->{maxdepth};
 
     # Start a new line
     my $s = 1;
@@ -407,15 +467,15 @@ sub emit_text {
     return $s unless $s;
 
     # Level adjust?
-    $level++;   # We're over by one by default
+    $level++;    # We're over by one by default
     $level += $opts->{adjust_level}
         if $opts->{adjust_level} && $opts->{adjust_level} =~ m{^-?\d+$}sxm;
 
     # Emit the text
     my $indent = q{ } x ($this->{step} * $level);
     my $span = $this->{width} - ($this->{step} * $level) - 10;
-    my @mlines = _wrap($msg, int($span*2/3), $span);
-    while (defined (my $txt = shift @mlines)) {
+    my @mlines = _wrap($msg, int($span * 2 / 3), $span);
+    while (defined(my $txt = shift @mlines)) {
         my $bspace = q{ } x $this->{bullet_width};
         $s = $this->_spew($bspace . $indent . $txt . "\n");
         return $s unless $s;
@@ -424,23 +484,23 @@ sub emit_text {
     return 1;
 }
 
-sub emit_emerg {emit_done @_,"EMERG"};  # syslog: Off the scale!
-sub emit_alert {emit_done @_,"ALERT"};  # syslog: A major subsystem is unusable.
-sub emit_crit  {emit_done @_,"CRIT"};   # syslog: a critical subsystem is not working entirely.
-sub emit_fail  {emit_done @_,"FAIL"};   # Failure
-sub emit_fatal {emit_done @_,"FATAL"};  # Fatal error
-sub emit_error {emit_done @_,"ERROR"};  # syslog 'err': Bugs, bad data, files not found, ...
-sub emit_warn  {emit_done @_,"WARN"};   # syslog 'warning'
-sub emit_note  {emit_done @_,"NOTE"};   # syslog 'notice'
-sub emit_info  {emit_done @_,"INFO"};   # syslog 'info'
-sub emit_ok    {emit_done @_,"OK"};     # copacetic
-sub emit_debug {emit_done @_,"DEBUG"};  # syslog: Really boring diagnostic output.
-sub emit_notry {emit_done @_,"NOTRY"};  # Untried
-sub emit_unk   {emit_done @_,"UNK"};    # Unknown
-sub emit_yes   {emit_done @_,"YES"};    # Yes
-sub emit_no    {emit_done @_,"NO"};     # No
-sub emit_none  {emit_done {-silent => 1}, @_, "NONE"};
-                                        # *Special* closes level quietly (prints no wrapup severity)
+sub emit_emerg {emit_done @_, "EMERG"};    # syslog: Off the scale!
+sub emit_alert {emit_done @_, "ALERT"};    # syslog: A major subsystem is unusable.
+sub emit_crit  {emit_done @_, "CRIT"};     # syslog: a critical subsystem is not working entirely.
+sub emit_fail  {emit_done @_, "FAIL"};     # Failure
+sub emit_fatal {emit_done @_, "FATAL"};    # Fatal error
+sub emit_error {emit_done @_, "ERROR"};    # syslog 'err': Bugs, bad data, files not found, ...
+sub emit_warn  {emit_done @_, "WARN"};     # syslog 'warning'
+sub emit_note  {emit_done @_, "NOTE"};     # syslog 'notice'
+sub emit_info  {emit_done @_, "INFO"};     # syslog 'info'
+sub emit_ok    {emit_done @_, "OK"};       # copacetic
+sub emit_debug {emit_done @_, "DEBUG"};    # syslog: Really boring diagnostic output.
+sub emit_notry {emit_done @_, "NOTRY"};    # Untried
+sub emit_unk   {emit_done @_, "UNK"};      # Unknown
+sub emit_yes   {emit_done @_, "YES"};      # Yes
+sub emit_no    {emit_done @_, "NO"};       # No
+sub emit_none  {emit_done {-silent => 1}, @_, "NONE"}
+# *Special* closes level quietly (prints no wrapup severity)
 
 #
 # Return the bullet string for the given level
@@ -450,9 +510,10 @@ sub _bullet {
     my $bullet = q{};
     if (ref($this->{bullets}) eq 'ARRAY') {
         my $pmax = $#{$this->{bullets}};
-        $bullet = $this->{bullets}->[$level > $pmax? $pmax : $level];
+        $bullet = $this->{bullets}->[$level > $pmax ? $pmax : $level];
     }
-# TODO: Allow bullets to be given as CSV:  "* ,+ ,- ,  " for example.
+
+    # TODO: Allow bullets to be given as CSV:  "* ,+ ,- ,  " for example.
     elsif ($this->{bullets}) {
         $bullet = $this->{bullets};
     }
@@ -467,7 +528,7 @@ sub _bullet {
 # Clean option keys
 #
 sub _clean_opts {
-    my %in = @_;
+    my %in  = @_;
     my %out = ();
     foreach my $k (keys %in) {
         my $v = $in{$k};
@@ -480,28 +541,29 @@ sub _clean_opts {
 
 #
 # Add ANSI color to a string, if ANSI is enabled
+### TODO:  use Term::ANSIColor, a standard module (verify what perl version introduced it, tho)
 #
 sub _colorize {
-    my ($str,$sev) = @_;
-    my $zon = q{};
+    my ($str, $sev) = @_;
+    my $zon  = q{};
     my $zoff = q{};
-    $zon = chr(27).'[1;31;40m'  if $sev =~ m{\bEMERG(ENCY)?}i;      #bold red on black
-    $zon = chr(27).'[1;35m'     if $sev =~ m{\bALERT\b}i;           #bold magenta
-    $zon = chr(27).'[1;31m'     if $sev =~ m{\bCRIT(ICAL)?\b}i;     #bold red
-    $zon = chr(27).'[1;31m'     if $sev =~ m{\bFAIL(URE)?\b}i;      #bold red
-    $zon = chr(27).'[1;31m'     if $sev =~ m{\bFATAL\b}i;           #bold red
-    $zon = chr(27).'[31m'       if $sev =~ m{\bERR(OR)?\b}i;        #red
-    $zon = chr(27).'[33m'       if $sev =~ m{\bWARN(ING)?\b}i;      #yellow
-    $zon = chr(27).'[36m'       if $sev =~ m{\bNOTE\b}i;            #cyan
-    $zon = chr(27).'[32m'       if $sev =~ m{\bINFO(RMATION)?\b}i;  #green
-    $zon = chr(27).'[1;32m'     if $sev =~ m{\bOK\b}i;              #bold green
-    $zon = chr(27).'[37;43m'    if $sev =~ m{\bDEBUG\b}i;           #grey on yellow
-    $zon = chr(27).'[30;47m'    if $sev =~ m{\bNOTRY\b}i;           #black on grey
-    $zon = chr(27).'[1;37;47m'  if $sev =~ m{\bUNK(OWN)?\b}i;       #bold white on gray
-    $zon = chr(27).'[32m'       if $sev =~ m{\bYES\b}i;             #green
-    $zon = chr(27).'[31m'       if $sev =~ m{\bNO\b}i;              #red
-    $zoff = chr(27).'[0m'       if $zon;
-    return $zon.$str.$zoff;
+    $zon = chr(27) . '[1;31;40m' if $sev =~ m{\bEMERG(ENCY)?}i;        #bold red on black
+    $zon = chr(27) . '[1;35m'    if $sev =~ m{\bALERT\b}i;             #bold magenta
+    $zon = chr(27) . '[1;31m'    if $sev =~ m{\bCRIT(ICAL)?\b}i;       #bold red
+    $zon = chr(27) . '[1;31m'    if $sev =~ m{\bFAIL(URE)?\b}i;        #bold red
+    $zon = chr(27) . '[1;31m'    if $sev =~ m{\bFATAL\b}i;             #bold red
+    $zon = chr(27) . '[31m'      if $sev =~ m{\bERR(OR)?\b}i;          #red
+    $zon = chr(27) . '[33m'      if $sev =~ m{\bWARN(ING)?\b}i;        #yellow
+    $zon = chr(27) . '[36m'      if $sev =~ m{\bNOTE\b}i;              #cyan
+    $zon = chr(27) . '[32m'      if $sev =~ m{\bINFO(RMATION)?\b}i;    #green
+    $zon = chr(27) . '[1;32m'    if $sev =~ m{\bOK\b}i;                #bold green
+    $zon = chr(27) . '[37;43m'   if $sev =~ m{\bDEBUG\b}i;             #grey on yellow
+    $zon = chr(27) . '[30;47m'   if $sev =~ m{\bNOTRY\b}i;             #black on grey
+    $zon = chr(27) . '[1;37;47m' if $sev =~ m{\bUNK(OWN)?\b}i;         #bold white on gray
+    $zon = chr(27) . '[32m'      if $sev =~ m{\bYES\b}i;               #green
+    $zon = chr(27) . '[31m'      if $sev =~ m{\bNO\b}i;                #red
+    $zoff = chr(27) . '[0m' if $zon;
+    return $zon . $str . $zoff;
 }
 
 #
@@ -512,14 +574,13 @@ sub _envvar {
     return $this->{envbase} . _oid($this->{fh});
 }
 
-
 # Return an output identifier for the filehandle
 #
 sub _oid {
     my $fh = shift;
     return 'str' if ref($fh) eq 'SCALAR';
     return 0 if ref($fh);
-    return fileno($fh||q{}) || 0;
+    return fileno($fh || q{}) || 0;
 }
 
 #
@@ -551,13 +612,15 @@ sub _oid {
 #       base object, we clone from $tobj instead of base object 0.
 #
 sub _process_args {
-    my $this = ref($_[0]) eq __PACKAGE__? shift : $BASE_OBJECT{0};
+    my $this = ref($_[0]) eq __PACKAGE__ ? shift : $BASE_OBJECT{0};
     my $oid = _oid($_[0]);
     if ($oid) {
+
         # We're given a filehandle or scalar ref for output.
         #   Find the associated base object or make a new one for it
         my $fh = shift;
         if ($fh eq $BASE_OBJECT{0}->{fh}) {
+
             # Use base object 0, 'cuz it matches
             $oid = 0;
         }
@@ -578,9 +641,18 @@ sub _process_args {
 #
 sub _spew {
     my $this = shift;
-    my $out = shift;
-    my $fh = $this->{fh};
-    return ref($fh) eq 'SCALAR'? ${$fh} .= $out : print {$fh} $out;
+    my $out  = shift;
+    my $fh   = $this->{fh};
+    return ref($fh) eq 'SCALAR' ? ${$fh} .= $out : print {$fh} $out;
+}
+
+#
+# Default timestamp 
+#
+sub _timestamp {
+    my $level = shift; #fwiw
+    my ($s, $m, $h) = localtime(time());
+    return sprintf "%2.2d:%2.2d:%2.2d ", $h, $m, $s;
 }
 
 #
@@ -591,8 +663,8 @@ sub _wrap {
     my ($msg, $min, $max) = @_;
     return ($msg)
         if !defined $msg
-           || $max < 3
-           || $min > $max;
+            || $max < 3
+            || $min > $max;
 
     # First split on newlines
     my @lines = ();
@@ -601,38 +673,39 @@ sub _wrap {
 
         # Then if each segment is more than the width, wrap it
         while (length($split) > $max) {
+
             # Look backwards for whitespace to split on
             my $pos = $max;
             while ($pos >= $min) {
-                if (substr($split,$pos,1) =~ m{\s}sxm) {
+                if (substr($split, $pos, 1) =~ m{\s}sxm) {
                     $pos++;
                     last;
                 }
                 $pos--;
             }
-            $pos = $max if $pos < $min; #no good place to break, use the max
+            $pos = $max if $pos < $min;    #no good place to break, use the max
 
             # Break it
-            my $chunk = substr($split,0,$pos);
+            my $chunk = substr($split, 0, $pos);
             $chunk =~ s{\s+$}{}sxm;
             push @lines, $chunk;
-            $split = substr($split, $pos, length($split)-$pos);
+            $split = substr($split, $pos, length($split) - $pos);
         }
-        $split =~ s{\s+$}{}sxm; #trim
+        $split =~ s{\s+$}{}sxm;            #trim
         push @lines, $split;
     }
     return @lines;
 }
 
-                            ### O ###
+### O ###
 
 package Term::Emit::TiedClosure;
 
 sub new {
     my ($proto, $base, @args) = @_;
-    my $class = ref ($proto) || $proto;  # Get the class name
-    my $this  = {-base => $base};
-    bless ($this, $class);
+    my $class = ref($proto) || $proto;     # Get the class name
+    my $this = {-base => $base};
+    bless($this, $class);
     $base->emit(@args);
     return $this;
 }
@@ -642,20 +715,16 @@ sub DESTROY {
     return $this->{-base}->emit_done();
 }
 
-
-
-1; # EOM
+1;                                         # EOM
 __END__
 
 =head1 NAME
 
 Term::Emit - Print with indentation, status, and closure
 
-
 =head1 VERSION
 
-This document describes Term::Emit version 0.0.3
-
+This document describes Term::Emit version 0.0.4
 
 =head1 SYNOPSIS
 
@@ -856,9 +925,9 @@ Here's the colors:
 
 To use colors, do this when you I<use> Term::Emit:
 
-    use Term::Emit ":all", {-colors => 1};
+    use Term::Emit ":all", {-color => 1};
         -or-
-    Term::Emit::setopts(-colors => 1);
+    Term::Emit::setopts(-color => 1);
 
 Run sample003.pl, included with this module, to see how it looks on
 your terminal.
@@ -894,6 +963,35 @@ If you write a Perl script that uses Term::Emit, and this script invokes other
 scripts that also use Term::Emit, some nice magic happens.  The inner scripts become
 aware of the outer, and they "nest" their indentation levels appropriately.
 Pretty cool, eh?
+
+=head3 Filtering-out Deeper Levels (Verbosity)
+
+Often a script will have a verbosity option (-v usually), that allows
+a user to control how much output to see.  Term::Emit makes this easy
+with the -maxdepth option.
+
+Suppose your script has the verbose option in $opts{verbose}, where 0 means
+no output, 1 means some output, 2 means more output, etc.  In your script,
+do this:
+
+    Term::Emit::setopts(-maxdepth => $opts{verbose});
+
+Then output will be filtered from nothing to full-on based on the verbosity setting.
+
+=head4 ...But Show Severe Messages
+
+If you're using -maxdepth to filter messages, sometimes you still want 
+to see a message regardless of the depth filtering - for example, a severe error.
+To set this, use the -showseverity option.  All messages that have
+at least that severity value or higher will be shown, regardless of the depth 
+filtering.  Thus, a better filter would look like:
+
+    Term::Emit::setopts(-maxdepth     => $opts{verbose},
+                        -showseverity => 7);
+
+See L</Completion Severity> above for the severity numbers.
+Note that the severity is rolled up to the deepest message filtered by
+the -maxdepth setting; any -reason text is hooked to that level.
 
 =head2 Closing with Different Text
 
@@ -1119,7 +1217,7 @@ or to set the indentation step size.  Call it like this:
                             -step  => 3,
                             -color => 1);
 
-See L</Attributes>.
+See L</Options>.
 
 =head3 C<emit>
 
@@ -1386,6 +1484,17 @@ The default is 2.
 Set to 0 to disable indentation - all messages will be left justified.
 Set to a small positive integer to use that step size.
 
+=head3 -timestamp
+
+If false (the default), emitted lines are not prefixed with a timestamp.
+If true, the default local timestamp HH::MM::SS is prefixed to each emit line.
+If it's a coderef, then that function is called to get the timestamp string.
+The function is passed the current indent level, for what it's worth.
+Note that no delimiter is provided between the timestamp string and the 
+emitted line, so you should provide your own (a space or colon or whatever).
+Also, emit_text() output is NOT timestamped, just that from emit() and 
+its closure.
+
 =head3 -trailer
 
 The B<single> character used to trail after a message up to the
@@ -1533,7 +1642,7 @@ for his namespace advice.
 
 =head1 LICENSE AND COPYRIGHT
 
-Copyright (c) 2009, Steve Roscio C<< <roscio@cpan.org> >>. All rights reserved.
+Copyright (c) 2009-2012, Steve Roscio C<< <roscio@cpan.org> >>.  All rights reserved.
 
 This module is free software; you can redistribute it and/or
 modify it under the same terms as Perl itself. See L<perlartistic>.
@@ -1572,8 +1681,6 @@ such damages.
        then a function to reset the internal position (or use a setopts() attr)
     * Make emit() use indirect object notation so it's a drop-in for print
         ** But do we want the overhead of IO::Handle?
-    * Does it make sense to do Severity level filtering?
-       i.e., don't show anything >= levelV ?
     * Timestamps - maybe do in another module?
         Allow timestamps in something akin to sprintf format within the strings.
         IE, solve this problem:
